@@ -1,0 +1,63 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Client {
+  id              String   @id @default(uuid())
+  shop_name       String
+  phone_number_id String   @unique // Used to identify which shop received the message
+  access_token    String   // Store the graph API token here if it's per client, or just use it from env if it's single-tenant app level
+  plan            String   @default("free") // "free", "basic", "pro" etc.
+
+  keywords        Keyword[]
+  leads           Lead[]
+
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+}
+
+model Response {
+  id         String   @id @default(uuid())
+  message    String
+  media_url  String?  // Optional image/media
+
+  keywords   Keyword[]
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+model Keyword {
+  id          String   @id @default(uuid())
+  client_id   String
+  trigger     String   // E.g., "iphone", "price", "location"
+  response_id String
+
+  client      Client   @relation(fields: [client_id], references: [id], onDelete: Cascade)
+  response    Response @relation(fields: [response_id], references: [id], onDelete: Cascade)
+
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@unique([client_id, trigger]) // A client cannot have the same trigger multiple times
+}
+
+model Lead {
+  id           String   @id @default(uuid())
+  client_id    String
+  user_phone   String   // The customer's phone number
+  last_message String   // The last message the customer sent
+  timestamp    DateTime @default(now()) // Time of last interaction
+
+  client       Client   @relation(fields: [client_id], references: [id], onDelete: Cascade)
+
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  @@unique([client_id, user_phone]) // Track unique leads per client
+}
