@@ -35,11 +35,12 @@ model Response {
 model Keyword {
   id          String   @id @default(uuid())
   client_id   String
-  trigger     String   // E.g., "iphone", "price", "location"
-  response_id String
+  trigger     String   // E.g., "iphone", "price", "location", "services"
+  response_id String?  // Static reply (mutually exclusive with flow_id)
+  flow_id     String?  // Starts a stateful flow (mutually exclusive with response_id)
 
-  client      Client   @relation(fields: [client_id], references: [id], onDelete: Cascade)
-  response    Response @relation(fields: [response_id], references: [id], onDelete: Cascade)
+  client      Client    @relation(fields: [client_id], references: [id], onDelete: Cascade)
+  response    Response? @relation(fields: [response_id], references: [id], onDelete: Cascade)
 
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
@@ -48,16 +49,20 @@ model Keyword {
 }
 
 model Lead {
-  id           String   @id @default(uuid())
-  client_id    String
-  user_phone   String   // The customer's phone number
-  last_message String   // The last message the customer sent
-  timestamp    DateTime @default(now()) // Time of last interaction
+  id              String   @id @default(uuid())
+  client_id       String
+  user_phone      String   // The customer's phone number
+  last_message    String   // The last message the customer sent
+  timestamp       DateTime @default(now()) // Time of last interaction
 
-  client       Client   @relation(fields: [client_id], references: [id], onDelete: Cascade)
+  current_flow_id String?  // ID of the flow this lead is currently in, e.g. "rental_booking"
+  current_step    String?  // Step ID inside the flow, e.g. "Awaiting_Pincode"
+  collected_data  Json     @default("{}") // Scratchpad for in-progress flow data
 
-  created_at   DateTime @default(now())
-  updated_at   DateTime @updatedAt
+  client          Client   @relation(fields: [client_id], references: [id], onDelete: Cascade)
+
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
 
   @@unique([client_id, user_phone]) // Track unique leads per client
 }
