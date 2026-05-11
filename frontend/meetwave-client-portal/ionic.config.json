@@ -1,0 +1,7 @@
+{
+  "name": "meetwave-client-portal",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "react-vite"
+}
