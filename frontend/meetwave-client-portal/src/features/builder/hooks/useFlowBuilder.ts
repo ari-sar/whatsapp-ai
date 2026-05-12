@@ -27,6 +27,7 @@ export const useFlowBuilder = () => {
 
   const addNewNode = useCallback((type: string) => {
     const nodeId = `node-${Date.now()}`;
+    const count = flowStore.nodes.length;
     const newNode: Node = {
       id: nodeId,
       type,
@@ -36,7 +37,7 @@ export const useFlowBuilder = () => {
         prompt: '',
         options: [],
       },
-      position: { x: 0, y: 0 },
+      position: { x: 100 + (count % 4) * 220, y: 220 + Math.floor(count / 4) * 140 },
     };
     flowStore.addNode(newNode);
     builderStore.setSelectedNodeId(nodeId);
