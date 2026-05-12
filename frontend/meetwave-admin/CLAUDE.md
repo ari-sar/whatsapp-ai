@@ -65,7 +65,9 @@ Two-pane layout inside `FlowEdit`:
    - `text`: prompt, validation regex, invalid message, collectKey
    - `list`: prompt, buttonLabel, sections[].rows[], collectKey, collectLabelKey, invalidMessage
    - `button`: prompt, buttons[] (max 3), collectKey, invalidMessage
+   - `check`: checkKey, operator, plus operator-specific fields (value / values[] / pattern / source). For `in_source` / `not_in_source` the source dropdown is currently a single option (`serviceable_pincodes`) — see `SOURCE_OPTIONS` in `NodeInspector.tsx`.
    - `condition` / `start` / `end`: label only; transitions added on the canvas
+   - **Outgoing transitions editor** — for each outgoing edge, choose the condition type (`Default`, `input_eq`, `input_in`, `collected_eq` for most steps; `check_pass` / `check_fail` for `check` steps) and fill operator-specific inputs. The edge stores `data.condition` (or no condition for default).
    - **Step ID** is editable — rename propagates to all edges. (Backend has no automatic rename for live `Lead.current_step` values — renaming breaks active conversations.)
 
 Saving: `useFlowBuilder.saveFlow()` calls `nodesToSteps` to translate canvas state into the backend payload (FlowStepInput[]), then `POST /api/admin/panel/flows` (create) or `PUT /api/admin/panel/flows/:id` (update). Validation is light: needs at least one node, single (or zero) start node, name + businessType set. Server is the source of truth.

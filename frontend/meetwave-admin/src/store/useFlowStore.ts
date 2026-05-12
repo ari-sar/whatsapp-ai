@@ -22,6 +22,7 @@ interface FlowState {
   updateNode: (nodeId: string, data: Partial<Node>) => void;
   addEdge: (edge: Edge) => void;
   removeEdge: (edgeId: string) => void;
+  updateEdge: (edgeId: string, data: Partial<Edge>) => void;
   reset: () => void;
 }
 
@@ -59,6 +60,11 @@ export const useFlowStore = create<FlowState>((set) => ({
   removeEdge: (edgeId) =>
     set((state) => ({
       edges: state.edges.filter((e) => e.id !== edgeId),
+    })),
+
+  updateEdge: (edgeId, data) =>
+    set((state) => ({
+      edges: state.edges.map((e) => (e.id === edgeId ? { ...e, ...data } : e)),
     })),
 
   reset: () => set({ metadata: defaultMetadata, nodes: [], edges: [] }),

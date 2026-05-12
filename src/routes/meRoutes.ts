@@ -11,6 +11,12 @@ import {
   deleteKeyword,
   leadStats,
 } from '../controllers/meController';
+import {
+  listServiceAreas,
+  createServiceArea,
+  bulkCreateServiceAreas,
+  deleteServiceArea,
+} from '../controllers/meServiceAreaController';
 
 const router = Router();
 
@@ -26,6 +32,11 @@ router.get('/keywords', listKeywords);
 router.post('/keywords', createKeyword);
 router.put('/keywords/:id', updateKeyword);
 router.delete('/keywords/:id', deleteKeyword);
+
+router.get('/service-areas', listServiceAreas);
+router.post('/service-areas', createServiceArea);
+router.post('/service-areas/bulk', bulkCreateServiceAreas);
+router.delete('/service-areas/:id', deleteServiceArea);
 
 router.get('/leads/stats', leadStats);
 

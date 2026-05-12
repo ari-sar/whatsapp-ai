@@ -14,7 +14,32 @@ export interface NodeData {
   buttons?: any[];
   headerText?: string;
   footerText?: string;
+  // check node:
+  operator?: string;
+  checkKey?: string;
+  value?: string;
+  values?: string[];
+  pattern?: string;
+  source?: string;
 }
+
+export const describeCondition = (c: any): string => {
+  if (!c || typeof c !== 'object') return '';
+  switch (c.type) {
+    case 'input_eq':
+      return `= ${c.value}`;
+    case 'input_in':
+      return `∈ ${(c.values ?? []).join(', ')}`;
+    case 'collected_eq':
+      return `${c.key}=${c.value}`;
+    case 'check_pass':
+      return 'pass';
+    case 'check_fail':
+      return 'fail';
+    default:
+      return JSON.stringify(c);
+  }
+};
 
 export const flowToNodes = (flow: FlowDetail): { nodes: Node[]; edges: Edge[] } => {
   const nodes: Node[] = flow.steps.map((s) => ({
@@ -34,6 +59,12 @@ export const flowToNodes = (flow: FlowDetail): { nodes: Node[]; edges: Edge[] } 
       buttons: s.config?.buttons,
       headerText: s.config?.headerText,
       footerText: s.config?.footerText,
+      operator: s.config?.operator,
+      checkKey: s.config?.checkKey,
+      value: s.config?.value,
+      values: s.config?.values,
+      pattern: s.config?.pattern,
+      source: s.config?.source,
     },
   }));
 
@@ -51,14 +82,6 @@ export const flowToNodes = (flow: FlowDetail): { nodes: Node[]; edges: Edge[] } 
   });
 
   return { nodes, edges };
-};
-
-const describeCondition = (c: any): string => {
-  if (!c || typeof c !== 'object') return '';
-  if (c.type === 'input_eq') return `= ${c.value}`;
-  if (c.type === 'input_in') return `∈ ${(c.values ?? []).join(', ')}`;
-  if (c.type === 'collected_eq') return `${c.key}=${c.value}`;
-  return JSON.stringify(c);
 };
 
 export interface ValidationResult {
@@ -106,6 +129,12 @@ export const nodesToSteps = (nodes: Node[], edges: Edge[]): ValidationResult => 
     if (d.buttons) cfg.buttons = d.buttons;
     if (d.headerText) cfg.headerText = d.headerText;
     if (d.footerText) cfg.footerText = d.footerText;
+    if (d.operator) cfg.operator = d.operator;
+    if (d.checkKey) cfg.checkKey = d.checkKey;
+    if (d.value !== undefined) cfg.value = d.value;
+    if (Array.isArray(d.values)) cfg.values = d.values;
+    if (d.pattern) cfg.pattern = d.pattern;
+    if (d.source) cfg.source = d.source;
 
     return {
       step_id: n.id,

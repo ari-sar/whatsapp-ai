@@ -95,6 +95,7 @@ export const FlowCanvas: React.FC = () => {
           <IonSelectOption value="text">Text Input</IonSelectOption>
           <IonSelectOption value="list">List Menu</IonSelectOption>
           <IonSelectOption value="button">Button Choice</IonSelectOption>
+          <IonSelectOption value="check">If-Else (Check)</IonSelectOption>
           <IonSelectOption value="condition">Condition</IonSelectOption>
           <IonSelectOption value="end">End</IonSelectOption>
         </IonSelect>
@@ -137,6 +138,8 @@ export const FlowCanvas: React.FC = () => {
             edges={builder.edges}
             onPatchData={builder.updateSelectedNodeData}
             onRename={builder.renameSelectedNode}
+            onUpdateEdgeCondition={builder.updateEdgeCondition}
+            onDeleteEdge={builder.deleteEdge}
           />
         </div>
       </div>

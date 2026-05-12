@@ -6,6 +6,7 @@ import {
   DbStep,
   getStep,
   handleStep,
+  isAutoAdvanceStep,
   isEndStep,
   loadFlow,
   promptStep,
@@ -44,7 +45,7 @@ export const processMessage = async (
     });
 
     if (lead.current_flow_id && lead.current_step) {
-      await routeToFlow(lead, client.access_token, phoneNumberId, from, input);
+      await routeToFlow(lead, client.id, client.access_token, phoneNumberId, from, input);
       return;
     }
 
@@ -67,6 +68,7 @@ const clearLeadFlow = (leadId: string) =>
 
 const routeToFlow = async (
   lead: { id: string; current_flow_id: string | null; current_step: string | null; collected_data: any },
+  clientId: string,
   token: string,
   phoneNumberId: string,
   from: string,
@@ -87,7 +89,7 @@ const routeToFlow = async (
 
   const collected = (lead.collected_data as Record<string, any>) ?? {};
   const ctx = { phoneNumberId, to: from, token };
-  const result = handleStep(step, input, collected);
+  const result = await handleStep(step, input, collected, clientId);
   console.log(`${TAG}.routeToFlow handled`, { leadId: lead.id, stepId: step.step_id, nextStepId: result.nextStepId });
 
   const merged = { ...collected, ...(result.collectedPatch ?? {}) };
@@ -107,8 +109,8 @@ const routeToFlow = async (
 
   let cursor: DbStep | undefined = getStep(flow, result.nextStepId);
   let cursorCollected = merged;
-  while (cursor && (cursor.type === 'start' || cursor.type === 'condition')) {
-    const r = handleStep(cursor, input, cursorCollected);
+  while (cursor && isAutoAdvanceStep(cursor)) {
+    const r = await handleStep(cursor, input, cursorCollected, clientId);
     if (r.collectedPatch) cursorCollected = { ...cursorCollected, ...r.collectedPatch };
     if (r.nextStepId === null) {
       await clearLeadFlow(lead.id);
@@ -171,8 +173,8 @@ const routeToKeyword = async (
     }
 
     let collected: Record<string, any> = {};
-    while (entry && (entry.type === 'start' || entry.type === 'condition')) {
-      const r = handleStep(entry, { type: 'text', value: '' }, collected);
+    while (entry && isAutoAdvanceStep(entry)) {
+      const r = await handleStep(entry, { type: 'text', value: '' }, collected, clientId);
       if (r.collectedPatch) collected = { ...collected, ...r.collectedPatch };
       if (r.nextStepId === null) {
         return;

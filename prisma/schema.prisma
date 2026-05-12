@@ -14,12 +14,26 @@ model Client {
   access_token    String?
   plan            String   @default("free")
 
-  keywords        Keyword[]
-  leads           Lead[]
-  user            User?
+  keywords             Keyword[]
+  leads                Lead[]
+  user                 User?
+  serviceable_pincodes ServiceablePincode[]
 
   created_at      DateTime @default(now())
   updated_at      DateTime @updatedAt
+}
+
+model ServiceablePincode {
+  id         String   @id @default(uuid())
+  client_id  String
+  pincode    String
+
+  client     Client   @relation(fields: [client_id], references: [id], onDelete: Cascade)
+
+  created_at DateTime @default(now())
+
+  @@unique([client_id, pincode])
+  @@index([client_id])
 }
 
 model Response {

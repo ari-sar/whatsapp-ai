@@ -97,6 +97,7 @@ export const promptStep = async (
     }
     case 'start':
     case 'condition':
+    case 'check':
       return;
     default:
       console.warn(`${TAG}.promptStep unknown step type`, { type: step.type });
@@ -127,6 +128,74 @@ const matchTransition = (
   return null;
 };
 
+const resolveSource = async (
+  source: string,
+  clientId: string,
+  value: string
+): Promise<boolean> => {
+  if (!value) return false;
+  switch (source) {
+    case 'serviceable_pincodes': {
+      const row = await prisma.serviceablePincode.findUnique({
+        where: { client_id_pincode: { client_id: clientId, pincode: value } },
+      });
+      return !!row;
+    }
+    default:
+      console.warn(`${TAG}.resolveSource unknown source`, { source });
+      return false;
+  }
+};
+
+const evaluateCheck = async (
+  cfg: any,
+  collected: Record<string, any>,
+  clientId: string
+): Promise<boolean> => {
+  const value = collected[cfg?.checkKey];
+  const op = cfg?.operator;
+  switch (op) {
+    case 'equals':
+      return String(value ?? '') === String(cfg?.value ?? '');
+    case 'not_equals':
+      return String(value ?? '') !== String(cfg?.value ?? '');
+    case 'in_list':
+      return Array.isArray(cfg?.values) && cfg.values.includes(value);
+    case 'not_in_list':
+      return Array.isArray(cfg?.values) && !cfg.values.includes(value);
+    case 'contains':
+      return typeof value === 'string' && typeof cfg?.value === 'string' && value.includes(cfg.value);
+    case 'regex': {
+      if (typeof cfg?.pattern !== 'string' || !cfg.pattern) return false;
+      try {
+        return new RegExp(cfg.pattern).test(String(value ?? ''));
+      } catch {
+        return false;
+      }
+    }
+    case 'in_source':
+      return await resolveSource(String(cfg?.source ?? ''), clientId, String(value ?? ''));
+    case 'not_in_source':
+      return !(await resolveSource(String(cfg?.source ?? ''), clientId, String(value ?? '')));
+    default:
+      console.warn(`${TAG}.evaluateCheck unknown operator`, { op });
+      return false;
+  }
+};
+
+const pickCheckTarget = (transitions: any[], passed: boolean): string | null => {
+  const match = (passed ? 'check_pass' : 'check_fail');
+  for (const t of transitions) {
+    if (!t || typeof t.to !== 'string') continue;
+    if (t.condition?.type === match) return t.to;
+  }
+  for (const t of transitions) {
+    if (!t || typeof t.to !== 'string') continue;
+    if (!t.condition) return t.to;
+  }
+  return null;
+};
+
 export interface AdvanceResult {
   nextStepId: string | null;
   collectedPatch?: Record<string, any>;
@@ -134,11 +203,12 @@ export interface AdvanceResult {
   invalidMessage?: string;
 }
 
-export const handleStep = (
+export const handleStep = async (
   step: DbStep,
   input: IncomingInput,
-  collected: Record<string, any>
-): AdvanceResult => {
+  collected: Record<string, any>,
+  clientId: string
+): Promise<AdvanceResult> => {
   const cfg = (step.config ?? {}) as any;
   const transitions = (step.transitions ?? []) as any[];
 
@@ -205,6 +275,11 @@ export const handleStep = (
       const next = matchTransition(transitions, input, collected);
       return { nextStepId: next };
     }
+    case 'check': {
+      const passed = await evaluateCheck(cfg, collected, clientId);
+      const next = pickCheckTarget(transitions, passed);
+      return { nextStepId: next };
+    }
     case 'end':
       return { nextStepId: null };
     default:
@@ -213,5 +288,8 @@ export const handleStep = (
 };
 
 export const isEndStep = (step: DbStep): boolean => step.type === 'end';
+
+export const isAutoAdvanceStep = (step: DbStep): boolean =>
+  step.type === 'start' || step.type === 'condition' || step.type === 'check';
 
 export const getStep = findStep;

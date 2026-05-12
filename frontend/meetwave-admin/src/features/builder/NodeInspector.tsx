@@ -8,6 +8,8 @@ import {
   IonNote,
   IonButton,
   IonIcon,
+  IonSelect,
+  IonSelectOption,
 } from '@ionic/react';
 import { add, trash } from 'ionicons/icons';
 import { Node, Edge } from '@xyflow/react';
@@ -17,9 +19,42 @@ interface Props {
   edges: Edge[];
   onPatchData: (patch: Record<string, any>) => void;
   onRename: (newId: string) => void;
+  onUpdateEdgeCondition: (edgeId: string, condition: any | null) => void;
+  onDeleteEdge: (edgeId: string) => void;
 }
 
-export const NodeInspector: React.FC<Props> = ({ node, edges, onPatchData, onRename }) => {
+const SOURCE_OPTIONS = [
+  { value: 'serviceable_pincodes', label: 'Shop owner — Serviceable pincodes' },
+];
+
+const CHECK_OPERATORS = [
+  { value: 'equals', label: 'equals (value)' },
+  { value: 'not_equals', label: 'does not equal (value)' },
+  { value: 'in_list', label: 'is in list (literal values)' },
+  { value: 'not_in_list', label: 'is NOT in list (literal values)' },
+  { value: 'contains', label: 'contains substring' },
+  { value: 'regex', label: 'matches regex' },
+  { value: 'in_source', label: 'is in source (per-tenant DB list)' },
+  { value: 'not_in_source', label: 'is NOT in source (per-tenant DB list)' },
+];
+
+const conditionOptionsForType = (type: string): Array<{ value: string; label: string }> => {
+  if (type === 'check') {
+    return [
+      { value: '__default__', label: 'Pass (true)' },
+      { value: 'check_pass', label: 'Pass (true)' },
+      { value: 'check_fail', label: 'Fail (false)' },
+    ];
+  }
+  return [
+    { value: '__default__', label: 'Default (unconditional)' },
+    { value: 'input_eq', label: 'Input equals' },
+    { value: 'input_in', label: 'Input is one of' },
+    { value: 'collected_eq', label: 'Collected key equals' },
+  ];
+};
+
+export const NodeInspector: React.FC<Props> = ({ node, edges, onPatchData, onRename, onUpdateEdgeCondition, onDeleteEdge }) => {
   if (!node) {
     return (
       <div style={{ padding: 16, color: 'var(--ion-color-medium)' }}>
@@ -85,6 +120,97 @@ export const NodeInspector: React.FC<Props> = ({ node, edges, onPatchData, onRen
     const buttons = Array.isArray(d.buttons) ? [...d.buttons] : [];
     buttons.splice(idx, 1);
     onPatchData({ buttons });
+  };
+
+  const handleConditionTypeChange = (edge: Edge, newType: string) => {
+    if (newType === '__default__') {
+      onUpdateEdgeCondition(edge.id, null);
+      return;
+    }
+    const existing = (edge.data as any)?.condition ?? {};
+    let next: any;
+    switch (newType) {
+      case 'input_eq':
+        next = { type: 'input_eq', value: existing.value ?? '' };
+        break;
+      case 'input_in':
+        next = { type: 'input_in', values: Array.isArray(existing.values) ? existing.values : [] };
+        break;
+      case 'collected_eq':
+        next = { type: 'collected_eq', key: existing.key ?? '', value: existing.value ?? '' };
+        break;
+      case 'check_pass':
+        next = { type: 'check_pass' };
+        break;
+      case 'check_fail':
+        next = { type: 'check_fail' };
+        break;
+      default:
+        next = null;
+    }
+    onUpdateEdgeCondition(edge.id, next);
+  };
+
+  const patchCondition = (edge: Edge, patch: any) => {
+    const existing = (edge.data as any)?.condition ?? {};
+    onUpdateEdgeCondition(edge.id, { ...existing, ...patch });
+  };
+
+  const renderConditionFields = (edge: Edge) => {
+    const c = (edge.data as any)?.condition;
+    if (!c) return null;
+    if (c.type === 'input_eq') {
+      return (
+        <IonItem>
+          <IonLabel position="stacked">Match value</IonLabel>
+          <IonInput
+            value={c.value ?? ''}
+            placeholder="e.g. yes / confirm_yes"
+            onIonInput={(e) => patchCondition(edge, { value: e.detail.value ?? '' })}
+          />
+        </IonItem>
+      );
+    }
+    if (c.type === 'input_in') {
+      const text = Array.isArray(c.values) ? c.values.join('\n') : '';
+      return (
+        <IonItem>
+          <IonLabel position="stacked">Match any of (one per line)</IonLabel>
+          <IonTextarea
+            autoGrow
+            value={text}
+            placeholder={'yes\nok\nconfirm'}
+            onIonInput={(e) => {
+              const raw = String(e.detail.value ?? '');
+              const values = raw.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean);
+              patchCondition(edge, { values });
+            }}
+          />
+        </IonItem>
+      );
+    }
+    if (c.type === 'collected_eq') {
+      return (
+        <>
+          <IonItem>
+            <IonLabel position="stacked">Collected key</IonLabel>
+            <IonInput
+              value={c.key ?? ''}
+              placeholder="e.g. plan_type"
+              onIonInput={(e) => patchCondition(edge, { key: e.detail.value ?? '' })}
+            />
+          </IonItem>
+          <IonItem>
+            <IonLabel position="stacked">Equals value</IonLabel>
+            <IonInput
+              value={c.value ?? ''}
+              onIonInput={(e) => patchCondition(edge, { value: e.detail.value ?? '' })}
+            />
+          </IonItem>
+        </>
+      );
+    }
+    return null;
   };
 
   return (
@@ -260,22 +386,133 @@ export const NodeInspector: React.FC<Props> = ({ node, edges, onPatchData, onRen
           </>
         )}
 
+        {type === 'check' && (
+          <>
+            <IonItem>
+              <IonLabel position="stacked">Check key</IonLabel>
+              <IonInput
+                value={d.checkKey ?? ''}
+                placeholder="e.g. pincode, name"
+                onIonInput={(e) => onPatchData({ checkKey: e.detail.value ?? '' })}
+              />
+              <IonNote slot="helper">Which collected_data key to evaluate.</IonNote>
+            </IonItem>
+            <IonItem>
+              <IonLabel position="stacked">Operator</IonLabel>
+              <IonSelect
+                value={d.operator ?? ''}
+                placeholder="Select operator"
+                onIonChange={(e) => onPatchData({ operator: e.detail.value })}
+              >
+                {CHECK_OPERATORS.map((op) => (
+                  <IonSelectOption key={op.value} value={op.value}>
+                    {op.label}
+                  </IonSelectOption>
+                ))}
+              </IonSelect>
+            </IonItem>
+
+            {(d.operator === 'equals' || d.operator === 'not_equals' || d.operator === 'contains') && (
+              <IonItem>
+                <IonLabel position="stacked">Value</IonLabel>
+                <IonInput
+                  value={d.value ?? ''}
+                  onIonInput={(e) => onPatchData({ value: e.detail.value ?? '' })}
+                />
+              </IonItem>
+            )}
+
+            {(d.operator === 'in_list' || d.operator === 'not_in_list') && (
+              <IonItem>
+                <IonLabel position="stacked">Values (one per line)</IonLabel>
+                <IonTextarea
+                  autoGrow
+                  value={Array.isArray(d.values) ? d.values.join('\n') : ''}
+                  placeholder={'400001\n400053\n110001'}
+                  onIonInput={(e) => {
+                    const raw = String(e.detail.value ?? '');
+                    const values = raw.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean);
+                    onPatchData({ values });
+                  }}
+                />
+              </IonItem>
+            )}
+
+            {d.operator === 'regex' && (
+              <IonItem>
+                <IonLabel position="stacked">Pattern</IonLabel>
+                <IonInput
+                  value={d.pattern ?? ''}
+                  placeholder="^John.*"
+                  onIonInput={(e) => onPatchData({ pattern: e.detail.value ?? '' })}
+                />
+              </IonItem>
+            )}
+
+            {(d.operator === 'in_source' || d.operator === 'not_in_source') && (
+              <IonItem>
+                <IonLabel position="stacked">Source</IonLabel>
+                <IonSelect
+                  value={d.source ?? ''}
+                  placeholder="Select data source"
+                  onIonChange={(e) => onPatchData({ source: e.detail.value })}
+                >
+                  {SOURCE_OPTIONS.map((s) => (
+                    <IonSelectOption key={s.value} value={s.value}>
+                      {s.label}
+                    </IonSelectOption>
+                  ))}
+                </IonSelect>
+                <IonNote slot="helper">Per-tenant list managed by the shop owner.</IonNote>
+              </IonItem>
+            )}
+
+            <IonItem lines="none">
+              <IonNote>
+                Add two outgoing edges below: one marked Pass (true), one marked Fail (false).
+              </IonNote>
+            </IonItem>
+          </>
+        )}
+
         <IonListHeader>
           <IonLabel>Outgoing transitions</IonLabel>
         </IonListHeader>
         {outgoing.length === 0 && (
           <IonItem>
-            <IonNote>None. Connect to another node on the canvas.</IonNote>
+            <IonNote>None. Connect this node to another on the canvas to add transitions.</IonNote>
           </IonItem>
         )}
-        {outgoing.map((e) => (
-          <IonItem key={e.id}>
-            <IonLabel>
-              <p>→ {e.target}</p>
-              <IonNote>{(e.data as any)?.condition ? JSON.stringify((e.data as any).condition) : 'default (unconditional)'}</IonNote>
-            </IonLabel>
-          </IonItem>
-        ))}
+        {outgoing.map((e) => {
+          const c = (e.data as any)?.condition;
+          const currentType = c?.type ?? '__default__';
+          return (
+            <div key={e.id} style={{ padding: '8px 16px', borderTop: '1px solid var(--ion-color-light)' }}>
+              <IonItem lines="none">
+                <IonLabel>
+                  <strong>→ {e.target}</strong>
+                </IonLabel>
+                <IonButton slot="end" fill="clear" color="danger" onClick={() => onDeleteEdge(e.id)}>
+                  <IonIcon icon={trash} />
+                </IonButton>
+              </IonItem>
+              <IonItem>
+                <IonLabel position="stacked">Condition</IonLabel>
+                <IonSelect
+                  value={currentType}
+                  onIonChange={(ev) => handleConditionTypeChange(e, String(ev.detail.value))}
+                >
+                  {conditionOptionsForType(type).map((opt) => (
+                    <IonSelectOption key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </IonSelectOption>
+                  ))}
+                </IonSelect>
+              </IonItem>
+              {renderConditionFields(e)}
+            </div>
+          );
+        })}
       </IonList>
     </div>
   );

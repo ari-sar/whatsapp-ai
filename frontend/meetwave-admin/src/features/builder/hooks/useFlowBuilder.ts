@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { Node, Edge } from '@xyflow/react';
 import { useFlowStore } from '../../../store/useFlowStore';
 import { useBuilderStore } from '../../../store/useBuilderStore';
-import { nodesToSteps } from '../utils/flowTransform';
+import { nodesToSteps, describeCondition } from '../utils/flowTransform';
 import { createFlow, updateFlow } from '../../../api/flowsService';
 
 export const useFlowBuilder = () => {
@@ -78,6 +78,27 @@ export const useFlowBuilder = () => {
     [flowStore, builderStore]
   );
 
+  const updateEdgeCondition = useCallback(
+    (edgeId: string, condition: any | null) => {
+      const edge = flowStore.edges.find((e) => e.id === edgeId);
+      if (!edge) return;
+      const nextData = { ...(edge.data ?? {}), condition: condition ?? undefined };
+      if (!condition) delete (nextData as any).condition;
+      flowStore.updateEdge(edgeId, {
+        data: nextData,
+        label: condition ? describeCondition(condition) : undefined,
+      });
+    },
+    [flowStore]
+  );
+
+  const deleteEdge = useCallback(
+    (edgeId: string) => {
+      flowStore.removeEdge(edgeId);
+    },
+    [flowStore]
+  );
+
   const saveFlow = useCallback(async () => {
     builderStore.setError(null);
     const { nodes, edges, metadata } = flowStore;
@@ -141,6 +162,8 @@ export const useFlowBuilder = () => {
     updateSelectedNodeData,
     renameSelectedNode,
     deleteNode,
+    updateEdgeCondition,
+    deleteEdge,
     saveFlow,
     setMetadata: flowStore.setMetadata,
     patchMetadata: flowStore.patchMetadata,

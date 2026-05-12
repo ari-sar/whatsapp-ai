@@ -14,7 +14,8 @@ Plus legacy unauthenticated `/api/admin/*` for direct CRUD (kept for backfill).
 POST /webhook                                → verifySignature → webhookHandler → processMessage
 GET  /webhook                                → webhookController.verifyWebhook
 POST /api/auth/otp/{send,verify}             → authController        (rate-limited)
-GET  /api/me, /api/me/*                      → authJwt → meController
+GET  /api/me, /api/me/*                      → authJwt → meController / meServiceAreaController
+*    /api/me/service-areas[/:id|/bulk]       → authJwt → meServiceAreaController (per-Client pincode list)
 GET  /api/plans                              → plansController.listPlans (public)
 GET  /api/flows                              → flowsController.listBusinessFlows (public, active only)
 POST /api/payments/*                         → paymentsController
@@ -33,9 +34,9 @@ Flows are stored in DB (`BusinessFlow` + `FlowStep`). The engine is type-generic
   - `text` / `end` → `sendTextMessage(interpolate(prompt, collected))`
   - `list` → `sendInteractiveListMessage(bodyText, buttonLabel, sections)`
   - `button` → `sendInteractiveButtonMessage(bodyText, buttons)`
-  - `start` / `condition` → no-op (pass-through)
-- `handleStep(step, input, collected)` — validates input against the step type, collects fields, picks the next step from `transitions`. Returns `{ nextStepId, collectedPatch?, reprompt?, invalidMessage? }`.
-- After a transition lands on a `start` or `condition` step, `messageProcessor.routeToFlow` auto-advances through them in a loop until it reaches a step that prompts the user.
+  - `start` / `condition` / `check` → no-op (pass-through)
+- `handleStep(step, input, collected, clientId)` — **async**. Validates input, collects fields, picks the next step from `transitions`. For `check` steps it evaluates the configured operator (incl. DB-backed `in_source`). Returns `{ nextStepId, collectedPatch?, reprompt?, invalidMessage? }`.
+- After a transition lands on a `start`, `condition`, or `check` step (`isAutoAdvanceStep`), `messageProcessor.routeToFlow` auto-advances through them in a loop until it reaches a step that prompts the user.
 - If `handleStep` says `reprompt: true`, the engine sends `invalidMessage` (if any) and calls `promptStep` again on the same step (no DB write).
 
 ### Transition matching
@@ -48,7 +49,9 @@ transitions: [
 ]
 ```
 
-Supported condition types: `input_eq`, `input_in`, `collected_eq`. First matching condition wins; if none match and an unconditional transition exists, it is taken. For `list`/`button` steps, if no transition matches the input value, the engine re-prompts.
+Supported condition types:
+- For most steps: `input_eq`, `input_in`, `collected_eq` — matched in order; first match wins; unconditional acts as fallback. For `list`/`button` steps, if no transition matches the input value, the engine re-prompts.
+- For `check` steps: `check_pass` / `check_fail` — picked based on the operator result (see `evaluateCheck`). An unconditional transition acts as a fallback if neither is set.
 
 ### Interpolation
 

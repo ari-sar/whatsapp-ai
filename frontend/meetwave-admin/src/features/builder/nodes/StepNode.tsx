@@ -7,6 +7,7 @@ import {
   checkmarkCircleOutline,
   stopCircleOutline,
   gitBranchOutline,
+  helpCircleOutline,
 } from 'ionicons/icons';
 import { useBuilderStore } from '../../../store/useBuilderStore';
 import './nodes.css';
@@ -17,6 +18,7 @@ const iconMap: Record<string, any> = {
   list: listOutline,
   button: checkmarkCircleOutline,
   condition: gitBranchOutline,
+  check: helpCircleOutline,
   end: stopCircleOutline,
 };
 
@@ -31,7 +33,7 @@ export const StepNode: React.FC<NodeProps> = ({ id, data }) => {
 
   return (
     <div
-      className={`step-node ${isSelected ? 'selected' : ''}`}
+      className={`step-node step-node-${type} ${isSelected ? 'selected' : ''}`}
       onClick={() => setSelectedNodeId(id)}
     >
       <Handle type="target" position={Position.Top} />
@@ -40,6 +42,13 @@ export const StepNode: React.FC<NodeProps> = ({ id, data }) => {
         <div className="step-node-label">{label}</div>
         <div className="step-node-id">#{id}</div>
         {prompt && <div className="step-node-prompt">{String(prompt).substring(0, 40)}...</div>}
+        {type === 'check' && (
+          <div className="step-node-sublabel">
+            {(data as any)?.operator
+              ? `${(data as any).checkKey ?? '?'} ${(data as any).operator}`
+              : 'if-else'}
+          </div>
+        )}
       </div>
       <Handle type="source" position={Position.Bottom} />
     </div>

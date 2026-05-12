@@ -24,6 +24,7 @@ src/                              Backend (Node/Express/TypeScript)
     adminUsersController.ts       Admin user list with plan + filters
     authController.ts             Shop-owner OTP send/verify → JWT
     meController.ts               JWT-protected user self-service
+    meServiceAreaController.ts    JWT-protected per-client serviceable pincodes CRUD
     flowsController.ts            Public list of active BusinessFlow metadata
     plansController.ts            Public list of active Plans
     paymentsController.ts         Razorpay order/verify
@@ -72,8 +73,9 @@ frontend/meetwave-admin/          Admin portal (Ionic React + Vite) — see its 
 - `Lead` — end customer of a Client; carries `current_flow_id` + `current_step` + `collected_data` for state.
 - `Keyword` — `(client_id, trigger)` unique; FK to either `Response` or `BusinessFlow.id` (mutually exclusive).
 - `Response` — static reply template (text/media).
-- `BusinessFlow` + `FlowStep` — DB-stored conversational flow. `BusinessFlow.initial_step_id` points at the entry `FlowStep.step_id`. Steps store `type` (start/text/list/button/condition/end), `config` (Json — prompt, sections, buttons, validation, collectKey…), and `transitions` (Json — `[{to, condition?}]`).
+- `BusinessFlow` + `FlowStep` — DB-stored conversational flow. `BusinessFlow.initial_step_id` points at the entry `FlowStep.step_id`. Steps store `type` (start/text/list/button/condition/check/end), `config` (Json — prompt, sections, buttons, validation, collectKey, or check operator+source…), and `transitions` (Json — `[{to, condition?}]`).
 - `Plan` — `name, price_in_paise, currency, billing_cycle, duration_days?, description?, discount_amount?, discount_days?, features[], is_active`.
+- `ServiceablePincode` — `(client_id, pincode)` unique per-tenant list. Used by the `check` flow node's `in_source`/`not_in_source` operator with `source: "serviceable_pincodes"`. Shop owner manages it from the client portal's **Areas** tab via `/api/me/service-areas`.
 - `AdminPhone` — allowlist of phone numbers permitted to log into the admin portal.
 - `AdminOtpRequest` — separate from `OtpRequest` (shop-owner); holds admin OTP rate-limit / verify state.
 - `AdminSession` — opaque-token 30-day sessions for admin portal.
@@ -95,11 +97,12 @@ POST /webhook
 
     if Lead.current_flow_id && Lead.current_step:
       flowEngine.loadFlow(flow_id) → DbFlow {steps[], initial_step_id}
-      flowEngine.handleStep(step, input, collected) → { nextStepId, collectedPatch?, reprompt?, invalidMessage? }
+      await flowEngine.handleStep(step, input, collected, clientId)
+        → { nextStepId, collectedPatch?, reprompt?, invalidMessage? }
         → if reprompt: send invalidMessage + re-prompt current step
         → if nextStepId === null: clear Lead flow state
         → else: advance Lead.current_step, run flowEngine.promptStep(nextStep)
-        → 'start' and 'condition' steps auto-advance via transitions
+        → 'start' / 'condition' / 'check' steps auto-advance via transitions (isAutoAdvanceStep)
 
     else if input.type === 'text':
       find Keyword by (client_id, trigger)
@@ -134,6 +137,39 @@ Each `BusinessFlow` row has many `FlowStep` rows. A step's shape:
 ```
 
 `promptStep` supports `{{collectedKey}}` interpolation in `config.prompt`. `transitions` are evaluated in order; the first matching one (or first unconditional if none match) wins.
+
+### `check` node (generic if-else)
+
+Silent (no message sent), auto-advances. Evaluates one operator and routes to a `check_pass` or `check_fail` transition.
+
+```ts
+{
+  step_id: 'Pincode_Serviceable?',
+  type: 'check',
+  config: {
+    checkKey: 'pincode',           // collected_data key to evaluate
+    operator: 'in_source',         // see below
+    source: 'serviceable_pincodes' // per-Client DB list (only source today)
+    // other ops use: value | values[] | pattern
+  },
+  transitions: [
+    { to: 'Ask_Service',         condition: { type: 'check_pass' } },
+    { to: 'End_Not_Serviceable', condition: { type: 'check_fail' } }
+  ]
+}
+```
+
+Operators (resolved in `flowEngine.evaluateCheck`):
+
+| Operator | Field used | Meaning |
+|----------|-----------|---------|
+| `equals` / `not_equals` | `value` (string) | exact compare |
+| `in_list` / `not_in_list` | `values` (string[]) | literal list |
+| `contains` | `value` (string) | substring match |
+| `regex` | `pattern` (string) | regex match |
+| `in_source` / `not_in_source` | `source` (string) | per-Client DB lookup; only `serviceable_pincodes` today |
+
+Adding a new source = new table + a case in `flowEngine.resolveSource` + a dropdown option in `NodeInspector.SOURCE_OPTIONS`. The `check` node type itself doesn't change.
 
 To add/edit a flow: use the admin app (Flow tab). Programmatically: insert/edit `BusinessFlow` + `FlowStep` rows.
 
