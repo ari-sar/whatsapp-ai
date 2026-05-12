@@ -4,6 +4,11 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import adminRoutes from './routes/adminRoutes';
 import webhookRoutes from './routes/webhookRoutes';
+import authRoutes from './routes/authRoutes';
+import meRoutes from './routes/meRoutes';
+import plansRoutes from './routes/plansRoutes';
+import flowsRoutes from './routes/flowsRoutes';
+import paymentsRoutes from './routes/paymentsRoutes';
 
 dotenv.config();
 
@@ -21,6 +26,13 @@ app.use(express.json({
 
 // Admin API
 app.use('/api/admin', adminRoutes);
+
+// Portal API
+app.use('/api/auth', authRoutes);
+app.use('/api/me', meRoutes);
+app.use('/api/plans', plansRoutes);
+app.use('/api/flows', flowsRoutes);
+app.use('/api/payments', paymentsRoutes);
 
 // Webhook API
 app.use('/webhook', webhookRoutes);

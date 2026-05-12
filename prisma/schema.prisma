@@ -10,12 +10,13 @@ datasource db {
 model Client {
   id              String   @id @default(uuid())
   shop_name       String
-  phone_number_id String   @unique // Used to identify which shop received the message
-  access_token    String   // Store the graph API token here if it's per client, or just use it from env if it's single-tenant app level
-  plan            String   @default("free") // "free", "basic", "pro" etc.
+  phone_number_id String   @unique
+  access_token    String?
+  plan            String   @default("free")
 
   keywords        Keyword[]
   leads           Lead[]
+  user            User?
 
   created_at      DateTime @default(now())
   updated_at      DateTime @updatedAt
@@ -24,7 +25,7 @@ model Client {
 model Response {
   id         String   @id @default(uuid())
   message    String
-  media_url  String?  // Optional image/media
+  media_url  String?
 
   keywords   Keyword[]
 
@@ -35,9 +36,9 @@ model Response {
 model Keyword {
   id          String   @id @default(uuid())
   client_id   String
-  trigger     String   // E.g., "iphone", "price", "location", "services"
-  response_id String?  // Static reply (mutually exclusive with flow_id)
-  flow_id     String?  // Starts a stateful flow (mutually exclusive with response_id)
+  trigger     String
+  response_id String?
+  flow_id     String?
 
   client      Client    @relation(fields: [client_id], references: [id], onDelete: Cascade)
   response    Response? @relation(fields: [response_id], references: [id], onDelete: Cascade)
@@ -45,24 +46,101 @@ model Keyword {
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
 
-  @@unique([client_id, trigger]) // A client cannot have the same trigger multiple times
+  @@unique([client_id, trigger])
 }
 
 model Lead {
   id              String   @id @default(uuid())
   client_id       String
-  user_phone      String   // The customer's phone number
-  last_message    String   // The last message the customer sent
-  timestamp       DateTime @default(now()) // Time of last interaction
+  user_phone      String
+  last_message    String
+  timestamp       DateTime @default(now())
 
-  current_flow_id String?  // ID of the flow this lead is currently in, e.g. "rental_booking"
-  current_step    String?  // Step ID inside the flow, e.g. "Awaiting_Pincode"
-  collected_data  Json     @default("{}") // Scratchpad for in-progress flow data
+  current_flow_id String?
+  current_step    String?
+  collected_data  Json     @default("{}")
 
   client          Client   @relation(fields: [client_id], references: [id], onDelete: Cascade)
 
   created_at      DateTime @default(now())
   updated_at      DateTime @updatedAt
 
-  @@unique([client_id, user_phone]) // Track unique leads per client
+  @@unique([client_id, user_phone])
+}
+
+model User {
+  id               String   @id @default(uuid())
+  phone            String   @unique
+  name             String?
+  business_name    String?
+  business_type_id String?
+  plan_id          String?
+  is_onboarded     Boolean  @default(false)
+  client_id        String?  @unique
+
+  client           Client?  @relation(fields: [client_id], references: [id])
+  keywords         UserKeyword[]
+  payment_orders   PaymentOrder[]
+
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+}
+
+model OtpRequest {
+  id         String   @id @default(uuid())
+  phone      String
+  code_hash  String
+  expires_at DateTime
+  consumed   Boolean  @default(false)
+  attempts   Int      @default(0)
+  created_at DateTime @default(now())
+
+  @@index([phone, created_at])
+}
+
+model Plan {
+  id             String   @id @default(uuid())
+  name           String
+  price_in_paise Int
+  currency       String   @default("INR")
+  billing_cycle  String
+  features       String[]
+  is_active      Boolean  @default(true)
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+}
+
+model BusinessFlow {
+  id            String  @id
+  business_type String
+  name          String
+  description   String
+  step_count    Int
+  is_active     Boolean @default(true)
+}
+
+model UserKeyword {
+  id               String   @id @default(uuid())
+  user_id          String
+  trigger          String
+  response_message String
+  user             User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  @@unique([user_id, trigger])
+}
+
+model PaymentOrder {
+  id                  String   @id @default(uuid())
+  user_id             String
+  plan_id             String
+  razorpay_order_id   String   @unique
+  amount              Int
+  currency            String
+  status              String
+  razorpay_payment_id String?
+  user                User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
 }

@@ -37,6 +37,10 @@ export const processMessage = async (
       console.warn(`No client found for phone_number_id: ${phoneNumberId}`);
       return;
     }
+    if (!client.access_token) {
+      console.warn(`Client ${client.id} has no access_token configured — skipping outbound reply.`);
+      return;
+    }
 
     const lead = await prisma.lead.upsert({
       where: { client_id_user_phone: { client_id: client.id, user_phone: from } },
