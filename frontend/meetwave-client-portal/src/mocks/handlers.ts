@@ -164,13 +164,11 @@ export const mockLeads = {
 };
 
 export const mockPayments = {
-  createOrder: async (planId: string): Promise<RazorpayOrder> => {
-    const plan = db.plans.find((p) => p.id === planId);
-    if (!plan) throw new Error('Plan not found');
+  createOrder: async (_planId: string): Promise<RazorpayOrder> => {
     return delay({
-      orderId: `order_${Date.now()}`,
-      amount: plan.priceInPaise,
-      currency: plan.currency,
+      orderId: `mock_order_${Date.now()}`,
+      amount: 0,
+      currency: 'INR',
       keyId: 'rzp_test_mock_key',
     });
   },
