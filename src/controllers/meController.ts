@@ -1,6 +1,5 @@
 import { Request, Response } from 'express';
 import prisma from '../config/prisma';
-import { getFlow } from '../flows';
 import { serializeUser, serializeUserKeyword } from '../utils/serializers';
 import {
   syncUserKeywordCreate,
@@ -135,10 +134,6 @@ export const setMyFlow = async (req: Request, res: Response) => {
   if (!bizFlow || !bizFlow.is_active) {
     console.warn(`${TAG}.setMyFlow INVALID_FLOW (not found/inactive)`, { userId, flowId, found: !!bizFlow, active: bizFlow?.is_active });
     return res.status(400).json({ error: 'Unknown flowId', code: 'INVALID_FLOW' });
-  }
-  if (!getFlow(flowId)) {
-    console.warn(`${TAG}.setMyFlow INVALID_FLOW (not in engine registry)`, { userId, flowId });
-    return res.status(400).json({ error: 'Flow not registered in engine', code: 'INVALID_FLOW' });
   }
 
   await prisma.user.update({

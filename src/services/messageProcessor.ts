@@ -1,30 +1,17 @@
 import prisma from '../config/prisma';
-import { getFlow } from '../flows';
-import { FlowContext, IncomingInput, Step } from '../flows/types';
+import { IncomingInput } from '../flows/types';
+import { sendTextMessage } from './whatsappApi';
 import {
-  sendTextMessage,
-  sendInteractiveListMessage,
-  sendInteractiveButtonMessage,
-} from './whatsappApi';
+  DbFlow,
+  DbStep,
+  getStep,
+  handleStep,
+  isEndStep,
+  loadFlow,
+  promptStep,
+} from './flowEngine';
 
 const TAG = '[messageProcessor]';
-
-const buildCtx = (
-  phoneNumberId: string,
-  to: string,
-  token: string,
-  collected: Record<string, any>
-): FlowContext => ({
-  phoneNumberId,
-  to,
-  token,
-  collected,
-  send: {
-    text: sendTextMessage,
-    list: sendInteractiveListMessage,
-    button: sendInteractiveButtonMessage,
-  },
-});
 
 const lastMessageText = (input: IncomingInput) => input.value;
 
@@ -57,22 +44,26 @@ export const processMessage = async (
     });
 
     if (lead.current_flow_id && lead.current_step) {
-      console.log(`${TAG}.processMessage routing to active flow`, { leadId: lead.id, flowId: lead.current_flow_id, step: lead.current_step });
       await routeToFlow(lead, client.access_token, phoneNumberId, from, input);
       return;
     }
 
     if (input.type !== 'text') {
-      console.log(`${TAG}.processMessage ignoring non-text without active flow`, { type: input.type, value: input.value });
+      console.log(`${TAG}.processMessage ignoring non-text without active flow`, { type: input.type });
       return;
     }
 
-    console.log(`${TAG}.processMessage routing to keyword match`, { clientId: client.id, text: input.value });
     await routeToKeyword(client.id, lead.id, client.access_token, phoneNumberId, from, input.value);
   } catch (error) {
     console.error(`${TAG}.processMessage error`, error);
   }
 };
+
+const clearLeadFlow = (leadId: string) =>
+  prisma.lead.update({
+    where: { id: leadId },
+    data: { current_flow_id: null, current_step: null, collected_data: {} },
+  });
 
 const routeToFlow = async (
   lead: { id: string; current_flow_id: string | null; current_step: string | null; collected_data: any },
@@ -81,59 +72,74 @@ const routeToFlow = async (
   from: string,
   input: IncomingInput
 ) => {
-  const flow = getFlow(lead.current_flow_id!);
+  const flow = await loadFlow(lead.current_flow_id!);
   if (!flow) {
-    console.warn(`${TAG}.routeToFlow UNKNOWN_FLOW — clearing state`, { leadId: lead.id, flowId: lead.current_flow_id });
-    await prisma.lead.update({
-      where: { id: lead.id },
-      data: { current_flow_id: null, current_step: null, collected_data: {} },
-    });
+    console.warn(`${TAG}.routeToFlow UNKNOWN_FLOW — clearing state`, { leadId: lead.id });
+    await clearLeadFlow(lead.id);
     return;
   }
-
-  const step: Step | undefined = flow.steps[lead.current_step!];
+  const step = getStep(flow, lead.current_step!);
   if (!step) {
-    console.warn(`${TAG}.routeToFlow UNKNOWN_STEP — clearing state`, { leadId: lead.id, flowId: flow.id, step: lead.current_step });
-    await prisma.lead.update({
-      where: { id: lead.id },
-      data: { current_flow_id: null, current_step: null, collected_data: {} },
-    });
+    console.warn(`${TAG}.routeToFlow UNKNOWN_STEP — clearing state`, { leadId: lead.id });
+    await clearLeadFlow(lead.id);
     return;
   }
 
   const collected = (lead.collected_data as Record<string, any>) ?? {};
-  const ctx = buildCtx(phoneNumberId, from, token, collected);
-  console.log(`${TAG}.routeToFlow step.handle entry`, { leadId: lead.id, flowId: flow.id, step: step.id, input });
-  const result = await step.handle(input, ctx);
-  console.log(`${TAG}.routeToFlow step.handle result`, { leadId: lead.id, flowId: flow.id, step: step.id, nextStep: result.nextStep, hasPatch: !!result.collectedPatch, error: result.error });
-  const mergedCollected = { ...collected, ...(result.collectedPatch ?? {}) };
+  const ctx = { phoneNumberId, to: from, token };
+  const result = handleStep(step, input, collected);
+  console.log(`${TAG}.routeToFlow handled`, { leadId: lead.id, stepId: step.step_id, nextStepId: result.nextStepId });
 
-  if (result.nextStep === null) {
-    console.log(`${TAG}.routeToFlow flow complete — clearing state`, { leadId: lead.id, flowId: flow.id });
-    await prisma.lead.update({
-      where: { id: lead.id },
-      data: { current_flow_id: null, current_step: null, collected_data: {} },
-    });
+  const merged = { ...collected, ...(result.collectedPatch ?? {}) };
+
+  if (result.reprompt) {
+    if (result.invalidMessage) {
+      await sendTextMessage({ ...ctx, text: result.invalidMessage });
+    }
+    await promptStep(step, ctx, merged);
+    return;
+  }
+
+  if (result.nextStepId === null) {
+    await clearLeadFlow(lead.id);
+    return;
+  }
+
+  let cursor: DbStep | undefined = getStep(flow, result.nextStepId);
+  let cursorCollected = merged;
+  while (cursor && (cursor.type === 'start' || cursor.type === 'condition')) {
+    const r = handleStep(cursor, input, cursorCollected);
+    if (r.collectedPatch) cursorCollected = { ...cursorCollected, ...r.collectedPatch };
+    if (r.nextStepId === null) {
+      await clearLeadFlow(lead.id);
+      return;
+    }
+    cursor = getStep(flow, r.nextStepId);
+  }
+  if (!cursor) {
+    console.warn(`${TAG}.routeToFlow next step missing — clearing`, { leadId: lead.id, nextStepId: result.nextStepId });
+    await clearLeadFlow(lead.id);
     return;
   }
 
   await prisma.lead.update({
     where: { id: lead.id },
-    data: { current_step: result.nextStep, collected_data: mergedCollected },
+    data: { current_step: cursor.step_id, collected_data: cursorCollected },
   });
 
-  if (result.nextStep !== lead.current_step) {
-    const nextStepDef = flow.steps[result.nextStep];
-    if (nextStepDef) {
-      console.log(`${TAG}.routeToFlow advancing → prompt`, { leadId: lead.id, flowId: flow.id, fromStep: step.id, nextStep: result.nextStep });
-      const nextCtx = buildCtx(phoneNumberId, from, token, mergedCollected);
-      await nextStepDef.prompt(nextCtx);
-    } else {
-      console.warn(`${TAG}.routeToFlow next step has no definition`, { leadId: lead.id, flowId: flow.id, nextStep: result.nextStep });
-    }
-  } else {
-    console.log(`${TAG}.routeToFlow staying on same step`, { leadId: lead.id, flowId: flow.id, step: step.id });
+  await promptStep(cursor, ctx, cursorCollected);
+
+  if (isEndStep(cursor)) {
+    await clearLeadFlow(lead.id);
   }
+};
+
+const findEntryStep = (flow: DbFlow): DbStep | null => {
+  if (flow.initial_step_id) {
+    const s = getStep(flow, flow.initial_step_id);
+    if (s) return s;
+  }
+  return flow.steps[0] ?? null;
 };
 
 const routeToKeyword = async (
@@ -145,42 +151,53 @@ const routeToKeyword = async (
   text: string
 ) => {
   const trigger = text.toLowerCase().trim();
-  console.log(`${TAG}.routeToKeyword lookup`, { clientId, leadId, trigger });
-
   const match = await prisma.keyword.findFirst({
     where: { client_id: clientId, trigger },
     include: { response: true },
   });
-  console.log(`${TAG}.routeToKeyword match`, { trigger, matched: !!match, hasFlow: !!match?.flow_id, hasResponse: !!match?.response });
+  console.log(`${TAG}.routeToKeyword match`, { trigger, matched: !!match, hasFlow: !!match?.flow_id });
 
   if (match?.flow_id) {
-    const flow = getFlow(match.flow_id);
+    const flow = await loadFlow(match.flow_id);
     if (!flow) {
-      console.warn(`${TAG}.routeToKeyword keyword references unknown flow_id`, { trigger, flowId: match.flow_id });
+      console.warn(`${TAG}.routeToKeyword unknown flow_id`, { trigger, flowId: match.flow_id });
       await sendTextMessage({ phoneNumberId, to: from, token, text: "Sorry, that option isn't available right now." });
       return;
     }
-    console.log(`${TAG}.routeToKeyword starting flow`, { leadId, flowId: flow.id, initialStep: flow.initialStep });
+    let entry = findEntryStep(flow);
+    if (!entry) {
+      console.warn(`${TAG}.routeToKeyword flow has no steps`, { flowId: flow.id });
+      return;
+    }
+
+    let collected: Record<string, any> = {};
+    while (entry && (entry.type === 'start' || entry.type === 'condition')) {
+      const r = handleStep(entry, { type: 'text', value: '' }, collected);
+      if (r.collectedPatch) collected = { ...collected, ...r.collectedPatch };
+      if (r.nextStepId === null) {
+        return;
+      }
+      entry = getStep(flow, r.nextStepId) ?? null;
+    }
+    if (!entry) return;
+
     await prisma.lead.update({
       where: { id: leadId },
-      data: { current_flow_id: flow.id, current_step: flow.initialStep, collected_data: {} },
+      data: { current_flow_id: flow.id, current_step: entry.step_id, collected_data: collected },
     });
-    const ctx = buildCtx(phoneNumberId, from, token, {});
-    await flow.steps[flow.initialStep]!.prompt(ctx);
+    const ctx = { phoneNumberId, to: from, token };
+    await promptStep(entry, ctx, collected);
+    if (isEndStep(entry)) {
+      await clearLeadFlow(leadId);
+    }
     return;
   }
 
   if (match?.response) {
-    console.log(`${TAG}.routeToKeyword sending static response`, { trigger, responseId: match.response.id, hasMedia: !!match.response.media_url });
-    if (match.response.media_url) {
-      await sendTextMessage({ phoneNumberId, to: from, token, text: match.response.message });
-    } else {
-      await sendTextMessage({ phoneNumberId, to: from, token, text: match.response.message });
-    }
+    await sendTextMessage({ phoneNumberId, to: from, token, text: match.response.message });
     return;
   }
 
-  console.log(`${TAG}.routeToKeyword no match — sending fallback`, { trigger });
   const fallback = await prisma.keyword.findFirst({
     where: { client_id: clientId, trigger: 'default_fallback' },
     include: { response: true },

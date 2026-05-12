@@ -75,6 +75,8 @@ model User {
   business_name    String?
   business_type_id String?
   plan_id          String?
+  plan_started_at  DateTime?
+  plan_expires_at  DateTime?
   is_onboarded     Boolean  @default(false)
   client_id        String?  @unique
 
@@ -99,24 +101,82 @@ model OtpRequest {
 }
 
 model Plan {
-  id             String   @id @default(uuid())
-  name           String
-  price_in_paise Int
-  currency       String   @default("INR")
-  billing_cycle  String
-  features       String[]
-  is_active      Boolean  @default(true)
-  created_at     DateTime @default(now())
-  updated_at     DateTime @updatedAt
+  id              String   @id @default(uuid())
+  name            String
+  price_in_paise  Int
+  currency        String   @default("INR")
+  billing_cycle   String
+  duration_days   Int?
+  description     String?
+  discount_amount Int?
+  discount_days   Int?
+  features        String[]
+  is_active       Boolean  @default(true)
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
 }
 
 model BusinessFlow {
-  id            String  @id
-  business_type String
-  name          String
-  description   String
-  step_count    Int
-  is_active     Boolean @default(true)
+  id              String     @id
+  business_type   String
+  name            String
+  description     String
+  step_count      Int
+  initial_step_id String?
+  is_active       Boolean    @default(true)
+  steps           FlowStep[]
+  created_at      DateTime   @default(now())
+  updated_at      DateTime   @updatedAt
+}
+
+model FlowStep {
+  id          String       @id @default(uuid())
+  flow_id     String
+  step_id     String
+  type        String
+  config      Json         @default("{}")
+  transitions Json         @default("[]")
+  position_x  Float        @default(0)
+  position_y  Float        @default(0)
+  flow        BusinessFlow @relation(fields: [flow_id], references: [id], onDelete: Cascade)
+  created_at  DateTime     @default(now())
+  updated_at  DateTime     @updatedAt
+
+  @@unique([flow_id, step_id])
+}
+
+model AdminPhone {
+  id         String         @id @default(uuid())
+  phone      String         @unique
+  name       String?
+  is_active  Boolean        @default(true)
+  sessions   AdminSession[]
+  created_at DateTime       @default(now())
+  updated_at DateTime       @updatedAt
+}
+
+model AdminOtpRequest {
+  id         String   @id @default(uuid())
+  phone      String
+  code_hash  String
+  expires_at DateTime
+  consumed   Boolean  @default(false)
+  attempts   Int      @default(0)
+  created_at DateTime @default(now())
+
+  @@index([phone, created_at])
+}
+
+model AdminSession {
+  id              String     @id @default(uuid())
+  token           String     @unique
+  admin_phone_id  String
+  expires_at      DateTime
+  last_seen_at    DateTime   @default(now())
+  admin_phone     AdminPhone @relation(fields: [admin_phone_id], references: [id], onDelete: Cascade)
+  created_at      DateTime   @default(now())
+
+  @@index([admin_phone_id])
 }
 
 model UserKeyword {

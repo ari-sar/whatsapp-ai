@@ -1,0 +1,53 @@
+.step-node {
+  padding: 12px 14px;
+  border: 2px solid #ccc;
+  border-radius: 8px;
+  background: white;
+  min-width: 180px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.step-node:hover {
+  border-color: #999;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.step-node.selected {
+  border-color: var(--ion-color-primary);
+  background: var(--ion-color-primary-tint);
+  box-shadow: 0 0 0 3px var(--ion-color-primary-shade);
+}
+
+.step-node-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.step-node-icon {
+  font-size: 22px;
+  color: var(--ion-color-primary);
+}
+
+.step-node-label {
+  font-weight: 600;
+  font-size: 13px;
+  color: #333;
+  word-break: break-word;
+}
+
+.step-node-id {
+  font-size: 11px;
+  color: #888;
+  font-family: monospace;
+}
+
+.step-node-prompt {
+  font-size: 11px;
+  color: #666;
+  max-width: 160px;
+  white-space: normal;
+}

@@ -3,6 +3,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
 import adminRoutes from './routes/adminRoutes';
+import adminAuthRoutes from './routes/adminAuthRoutes';
+import adminPanelRoutes from './routes/adminPanelRoutes';
 import webhookRoutes from './routes/webhookRoutes';
 import authRoutes from './routes/authRoutes';
 import meRoutes from './routes/meRoutes';
@@ -24,7 +26,11 @@ app.use(express.json({
   }
 }));
 
-// Admin API
+// Admin Panel API (allowlisted phones)
+app.use('/api/admin/auth', adminAuthRoutes);
+app.use('/api/admin/panel', adminPanelRoutes);
+
+// Legacy admin (multi-tenant client CRUD)
 app.use('/api/admin', adminRoutes);
 
 // Portal API
