@@ -35,15 +35,17 @@ export const onboarding = async (req: Request, res: Response) => {
   const bizFlow = await prisma.businessFlow.findUnique({ where: { id: businessTypeId } });
   if (!bizFlow) return res.status(400).json({ error: 'Unknown business type', code: 'INVALID_BUSINESS_TYPE' });
 
-  const order = await prisma.paymentOrder.findUnique({ where: { razorpay_order_id: orderId } });
-  if (
-    !order ||
-    order.user_id !== userId ||
-    order.plan_id !== planId ||
-    order.status !== 'paid' ||
-    order.razorpay_payment_id !== paymentId
-  ) {
-    return res.status(402).json({ error: 'Payment not verified', code: 'PAYMENT_NOT_VERIFIED' });
+  if (process.env.MOCK_PAYMENTS !== 'true') {
+    const order = await prisma.paymentOrder.findUnique({ where: { razorpay_order_id: orderId } });
+    if (
+      !order ||
+      order.user_id !== userId ||
+      order.plan_id !== planId ||
+      order.status !== 'paid' ||
+      order.razorpay_payment_id !== paymentId
+    ) {
+      return res.status(402).json({ error: 'Payment not verified', code: 'PAYMENT_NOT_VERIFIED' });
+    }
   }
 
   const existing = await prisma.user.findUnique({ where: { id: userId } });
