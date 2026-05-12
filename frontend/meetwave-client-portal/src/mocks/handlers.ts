@@ -6,7 +6,8 @@ import { LeadStats } from '../types/lead';
 import { PaymentSuccess, RazorpayOrder, VerifyPaymentResponse } from '../types/payment';
 import { CompleteOnboardingPayload } from '../types/user';
 
-export const USE_MOCKS = true;
+export const USE_MOCKS = false;
+export const USE_MOCK_PAYMENT = true;
 const ACCEPTED_OTP = '123456';
 const DELAY_MS = 400;
 

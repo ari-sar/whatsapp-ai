@@ -23,8 +23,10 @@ import { createOrder, verifyPayment } from '../api/paymentService';
 import { completeOnboarding } from '../api/userService';
 import { openRazorpayCheckout } from '../lib/razorpay';
 import { useAuthStore } from '../store/useAuthStore';
+import { USE_MOCK_PAYMENT } from '../mocks/handlers';
 import { Plan } from '../types/plan';
 import { BusinessFlow } from '../types/flow';
+import { PaymentSuccess } from '../types/payment';
 
 const formatPrice = (paise: number, currency: string) =>
   `${currency === 'INR' ? '₹' : currency} ${(paise / 100).toLocaleString('en-IN')}`;
@@ -79,12 +81,21 @@ export const Onboarding: React.FC = () => {
     setSubmitting(true);
     try {
       const order = await createOrder(planId);
-      const payment = await openRazorpayCheckout({
-        order,
-        prefill: { name, contact: user?.phone, email: '' },
-        notes: { businessName, businessTypeId, planId },
-        description: selectedPlan ? `${selectedPlan.name} plan` : 'Subscription',
-      });
+      let payment: PaymentSuccess;
+      if (USE_MOCK_PAYMENT) {
+        payment = {
+          razorpayPaymentId: `mock_pay_${Date.now()}`,
+          razorpayOrderId: order.orderId,
+          razorpaySignature: 'mock_signature',
+        };
+      } else {
+        payment = await openRazorpayCheckout({
+          order,
+          prefill: { name, contact: user?.phone, email: '' },
+          notes: { businessName, businessTypeId, planId },
+          description: selectedPlan ? `${selectedPlan.name} plan` : 'Subscription',
+        });
+      }
       const { verified } = await verifyPayment(payment);
       if (!verified) {
         setError('Payment could not be verified. Please contact support.');
