@@ -126,7 +126,7 @@ model BusinessFlow {
   is_active       Boolean    @default(true)
   steps           FlowStep[]
   created_at      DateTime   @default(now())
-  updated_at      DateTime   @updatedAt
+  updated_at      DateTime   @default(now()) @updatedAt
 }
 
 model FlowStep {
