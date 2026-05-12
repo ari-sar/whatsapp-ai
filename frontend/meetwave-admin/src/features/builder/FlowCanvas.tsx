@@ -68,7 +68,7 @@ export const FlowCanvas: React.FC = () => {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 500, width: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 220px)', minHeight: 500, width: '100%' }}>
       <div
         style={{
           padding: 8,
@@ -112,9 +112,10 @@ export const FlowCanvas: React.FC = () => {
         <div style={{ padding: 8, background: '#ffe0e0', color: '#c00', fontSize: 12 }}>{builder.error}</div>
       )}
 
-      <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+      <div style={{ flex: 1, display: 'flex', minHeight: 0, height: '100%' }}>
         <div style={{ flex: 1, minWidth: 0, position: 'relative', height: '100%' }}>
           <ReactFlow
+            style={{ width: '100%', height: '100%' }}
             nodes={builder.nodes}
             edges={builder.edges}
             onNodesChange={onNodesChange}
