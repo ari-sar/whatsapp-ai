@@ -68,7 +68,7 @@ export const FlowCanvas: React.FC = () => {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 500, width: '100%' }}>
       <div
         style={{
           padding: 8,
@@ -77,6 +77,7 @@ export const FlowCanvas: React.FC = () => {
           gap: 8,
           flexWrap: 'wrap',
           alignItems: 'center',
+          flexShrink: 0,
         }}
       >
         <IonSelect
@@ -112,7 +113,7 @@ export const FlowCanvas: React.FC = () => {
       )}
 
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ flex: 1, minWidth: 0, position: 'relative', height: '100%' }}>
           <ReactFlow
             nodes={builder.nodes}
             edges={builder.edges}
