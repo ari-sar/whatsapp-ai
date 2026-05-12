@@ -112,8 +112,8 @@ export const FlowCanvas: React.FC = () => {
         <div style={{ padding: 8, background: '#ffe0e0', color: '#c00', fontSize: 12 }}>{builder.error}</div>
       )}
 
-      <div style={{ flex: 1, display: 'flex', minHeight: 0, height: '100%' }}>
-        <div style={{ flex: 1, minWidth: 0, position: 'relative', height: '100%' }}>
+      <div style={{ flex: 1, display: 'flex', flexWrap: 'wrap', minHeight: 0 }}>
+        <div style={{ flex: '1 1 480px', minWidth: 320, minHeight: 480, position: 'relative' }}>
           <ReactFlow
             style={{ width: '100%', height: '100%' }}
             nodes={builder.nodes}
@@ -131,7 +131,7 @@ export const FlowCanvas: React.FC = () => {
             <MiniMap />
           </ReactFlow>
         </div>
-        <div style={{ width: 360, borderLeft: '1px solid var(--ion-color-light)', overflow: 'hidden' }}>
+        <div style={{ flex: '1 1 320px', minWidth: 280, maxWidth: 480, borderLeft: '1px solid var(--ion-color-light)', borderTop: '1px solid var(--ion-color-light)', overflow: 'auto', maxHeight: 600 }}>
           <NodeInspector
             node={selectedNode}
             edges={builder.edges}

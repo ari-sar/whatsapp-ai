@@ -103,7 +103,7 @@ export const FlowEdit: React.FC<RouteComponentProps<MatchParams>> = ({ match }) 
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 56px)' }}>
-            <div style={{ padding: 12, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8, flexShrink: 0 }}>
+            <div style={{ padding: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8, flexShrink: 0 }}>
               <IonItem>
                 <IonLabel position="stacked">Name</IonLabel>
                 <IonInput
