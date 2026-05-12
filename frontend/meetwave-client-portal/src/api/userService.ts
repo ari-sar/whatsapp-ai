@@ -4,7 +4,10 @@ import { AuthUser } from '../types/auth';
 import { CompleteOnboardingPayload } from '../types/user';
 import { useAuthStore } from '../store/useAuthStore';
 
+const TAG = '[userService]';
+
 export const getMe = async (): Promise<AuthUser> => {
+  console.log(`${TAG}.getMe entry`, { useMocks: USE_MOCKS });
   if (USE_MOCKS) {
     const phone = useAuthStore.getState().user?.phone;
     if (!phone) throw new Error('No authenticated user');
@@ -15,6 +18,7 @@ export const getMe = async (): Promise<AuthUser> => {
 };
 
 export const completeOnboarding = async (payload: CompleteOnboardingPayload): Promise<AuthUser> => {
+  console.log(`${TAG}.completeOnboarding entry`, { ...payload, useMocks: USE_MOCKS });
   if (USE_MOCKS) {
     const phone = useAuthStore.getState().user?.phone;
     if (!phone) throw new Error('No authenticated user');

@@ -1,5 +1,7 @@
 import { Flow } from './types';
 
+const TAG = '[rentalBookingFlow]';
+
 const SERVICES: Record<string, string> = {
   svc_ac: 'AC Repair',
   svc_heater: 'Heater Repair',
@@ -13,6 +15,7 @@ export const rentalBookingFlow: Flow = {
     Awaiting_Pincode: {
       id: 'Awaiting_Pincode',
       prompt: async (ctx) => {
+        console.log(`${TAG} Awaiting_Pincode.prompt`, { to: ctx.to });
         await ctx.send.text({
           phoneNumberId: ctx.phoneNumberId,
           to: ctx.to,
@@ -21,11 +24,13 @@ export const rentalBookingFlow: Flow = {
         });
       },
       handle: async (input, ctx) => {
+        console.log(`${TAG} Awaiting_Pincode.handle`, { to: ctx.to, input });
         if (input.type !== 'text') {
           return { nextStep: 'Awaiting_Pincode', error: 'Pincode must be typed as text.' };
         }
         const pincode = input.value.trim();
         if (!/^\d{6}$/.test(pincode)) {
+          console.log(`${TAG} Awaiting_Pincode invalid format`, { pincode });
           await ctx.send.text({
             phoneNumberId: ctx.phoneNumberId,
             to: ctx.to,
@@ -34,6 +39,7 @@ export const rentalBookingFlow: Flow = {
           });
           return { nextStep: 'Awaiting_Pincode' };
         }
+        console.log(`${TAG} Awaiting_Pincode accepted`, { pincode });
         return { nextStep: 'Awaiting_Service', collectedPatch: { pincode } };
       },
     },
@@ -41,6 +47,7 @@ export const rentalBookingFlow: Flow = {
     Awaiting_Service: {
       id: 'Awaiting_Service',
       prompt: async (ctx) => {
+        console.log(`${TAG} Awaiting_Service.prompt`, { to: ctx.to });
         await ctx.send.list({
           phoneNumberId: ctx.phoneNumberId,
           to: ctx.to,
@@ -56,8 +63,10 @@ export const rentalBookingFlow: Flow = {
         });
       },
       handle: async (input, ctx) => {
+        console.log(`${TAG} Awaiting_Service.handle`, { to: ctx.to, input });
         const id = input.value;
         if (input.type !== 'list' || !SERVICES[id]) {
+          console.log(`${TAG} Awaiting_Service invalid input — re-prompting`);
           await ctx.send.text({
             phoneNumberId: ctx.phoneNumberId,
             to: ctx.to,
@@ -66,6 +75,7 @@ export const rentalBookingFlow: Flow = {
           });
           return { nextStep: 'Awaiting_Service' };
         }
+        console.log(`${TAG} Awaiting_Service selected`, { service_id: id });
         return {
           nextStep: 'Awaiting_Confirmation',
           collectedPatch: { service_id: id, service_label: SERVICES[id] },
@@ -76,6 +86,7 @@ export const rentalBookingFlow: Flow = {
     Awaiting_Confirmation: {
       id: 'Awaiting_Confirmation',
       prompt: async (ctx) => {
+        console.log(`${TAG} Awaiting_Confirmation.prompt`, { to: ctx.to, collected: ctx.collected });
         await ctx.send.button({
           phoneNumberId: ctx.phoneNumberId,
           to: ctx.to,
@@ -88,10 +99,12 @@ export const rentalBookingFlow: Flow = {
         });
       },
       handle: async (input, ctx) => {
+        console.log(`${TAG} Awaiting_Confirmation.handle`, { to: ctx.to, input });
         if (input.type !== 'button') {
           return { nextStep: 'Awaiting_Confirmation' };
         }
         if (input.value === 'confirm_yes') {
+          console.log(`${TAG} Awaiting_Confirmation booked`, { collected: ctx.collected });
           await ctx.send.text({
             phoneNumberId: ctx.phoneNumberId,
             to: ctx.to,
@@ -100,6 +113,7 @@ export const rentalBookingFlow: Flow = {
           });
           return { nextStep: null };
         }
+        console.log(`${TAG} Awaiting_Confirmation cancelled`);
         await ctx.send.text({
           phoneNumberId: ctx.phoneNumberId,
           to: ctx.to,

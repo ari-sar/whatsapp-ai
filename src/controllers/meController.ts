@@ -8,15 +8,23 @@ import {
   syncUserKeywordDelete,
 } from '../services/keywordSync';
 
+const TAG = '[meController]';
+
 export const getMe = async (req: Request, res: Response) => {
-  const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
-  if (!user) return res.status(404).json({ error: 'User not found' });
+  const userId = req.user!.id;
+  console.log(`${TAG}.getMe entry`, { userId });
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) {
+    console.warn(`${TAG}.getMe USER_NOT_FOUND`, { userId });
+    return res.status(404).json({ error: 'User not found' });
+  }
   return res.json(serializeUser(user));
 };
 
 export const onboarding = async (req: Request, res: Response) => {
   const userId = req.user!.id;
   const { name, businessName, businessTypeId, planId, paymentId, orderId } = req.body ?? {};
+  console.log(`${TAG}.onboarding entry`, { userId, businessTypeId, planId, hasName: !!name, hasBusinessName: !!businessName, paymentId, orderId });
 
   if (
     typeof name !== 'string' ||
@@ -26,14 +34,21 @@ export const onboarding = async (req: Request, res: Response) => {
     typeof paymentId !== 'string' ||
     typeof orderId !== 'string'
   ) {
+    console.warn(`${TAG}.onboarding INVALID_INPUT`, { userId, body: req.body });
     return res.status(400).json({ error: 'Missing required fields', code: 'INVALID_INPUT' });
   }
 
   const plan = await prisma.plan.findUnique({ where: { id: planId } });
-  if (!plan) return res.status(400).json({ error: 'Unknown plan', code: 'INVALID_PLAN' });
+  if (!plan) {
+    console.warn(`${TAG}.onboarding INVALID_PLAN`, { userId, planId });
+    return res.status(400).json({ error: 'Unknown plan', code: 'INVALID_PLAN' });
+  }
 
   const bizFlow = await prisma.businessFlow.findUnique({ where: { id: businessTypeId } });
-  if (!bizFlow) return res.status(400).json({ error: 'Unknown business type', code: 'INVALID_BUSINESS_TYPE' });
+  if (!bizFlow) {
+    console.warn(`${TAG}.onboarding INVALID_BUSINESS_TYPE`, { userId, businessTypeId });
+    return res.status(400).json({ error: 'Unknown business type', code: 'INVALID_BUSINESS_TYPE' });
+  }
 
   if (process.env.MOCK_PAYMENTS !== 'true') {
     const order = await prisma.paymentOrder.findUnique({ where: { razorpay_order_id: orderId } });
@@ -44,12 +59,25 @@ export const onboarding = async (req: Request, res: Response) => {
       order.status !== 'paid' ||
       order.razorpay_payment_id !== paymentId
     ) {
+      console.warn(`${TAG}.onboarding PAYMENT_NOT_VERIFIED`, {
+        userId, planId, orderId, paymentId,
+        found: !!order,
+        orderUserMatch: order?.user_id === userId,
+        orderPlanMatch: order?.plan_id === planId,
+        orderStatus: order?.status,
+        paymentIdMatch: order?.razorpay_payment_id === paymentId,
+      });
       return res.status(402).json({ error: 'Payment not verified', code: 'PAYMENT_NOT_VERIFIED' });
     }
+  } else {
+    console.log(`${TAG}.onboarding payment verification SKIPPED (MOCK_PAYMENTS=true)`, { userId, orderId, paymentId });
   }
 
   const existing = await prisma.user.findUnique({ where: { id: userId } });
-  if (!existing) return res.status(404).json({ error: 'User not found' });
+  if (!existing) {
+    console.warn(`${TAG}.onboarding USER_NOT_FOUND`, { userId });
+    return res.status(404).json({ error: 'User not found' });
+  }
 
   let clientId = existing.client_id;
   if (!clientId) {
@@ -62,11 +90,13 @@ export const onboarding = async (req: Request, res: Response) => {
       },
     });
     clientId = client.id;
+    console.log(`${TAG}.onboarding created Client`, { userId, clientId });
   } else {
     await prisma.client.update({
       where: { id: clientId },
       data: { shop_name: businessName, plan: plan.name.toLowerCase() },
     });
+    console.log(`${TAG}.onboarding updated Client`, { userId, clientId });
   }
 
   const updated = await prisma.user.update({
@@ -81,57 +111,83 @@ export const onboarding = async (req: Request, res: Response) => {
     },
   });
 
+  console.log(`${TAG}.onboarding success`, { userId, clientId, businessTypeId, planId });
   return res.json(serializeUser(updated));
 };
 
 export const getMyFlow = async (req: Request, res: Response) => {
-  const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
+  const userId = req.user!.id;
+  console.log(`${TAG}.getMyFlow entry`, { userId });
+  const user = await prisma.user.findUnique({ where: { id: userId } });
   return res.json({ flowId: user?.business_type_id ?? null });
 };
 
 export const setMyFlow = async (req: Request, res: Response) => {
+  const userId = req.user!.id;
   const { flowId } = req.body ?? {};
+  console.log(`${TAG}.setMyFlow entry`, { userId, flowId });
+
   if (typeof flowId !== 'string') {
+    console.warn(`${TAG}.setMyFlow INVALID_FLOW (type)`, { userId, flowId });
     return res.status(400).json({ error: 'flowId required', code: 'INVALID_FLOW' });
   }
   const bizFlow = await prisma.businessFlow.findUnique({ where: { id: flowId } });
   if (!bizFlow || !bizFlow.is_active) {
+    console.warn(`${TAG}.setMyFlow INVALID_FLOW (not found/inactive)`, { userId, flowId, found: !!bizFlow, active: bizFlow?.is_active });
     return res.status(400).json({ error: 'Unknown flowId', code: 'INVALID_FLOW' });
   }
   if (!getFlow(flowId)) {
+    console.warn(`${TAG}.setMyFlow INVALID_FLOW (not in engine registry)`, { userId, flowId });
     return res.status(400).json({ error: 'Flow not registered in engine', code: 'INVALID_FLOW' });
   }
 
   await prisma.user.update({
-    where: { id: req.user!.id },
+    where: { id: userId },
     data: { business_type_id: flowId },
   });
+  console.log(`${TAG}.setMyFlow success`, { userId, flowId });
   return res.json({ flowId });
 };
 
 export const listKeywords = async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  console.log(`${TAG}.listKeywords entry`, { userId });
   const rows = await prisma.userKeyword.findMany({
-    where: { user_id: req.user!.id },
+    where: { user_id: userId },
     orderBy: { created_at: 'desc' },
   });
+  console.log(`${TAG}.listKeywords result`, { userId, count: rows.length });
   return res.json(rows.map(serializeUserKeyword));
 };
 
 export const createKeyword = async (req: Request, res: Response) => {
+  const userId = req.user!.id;
   const { trigger, responseMessage } = req.body ?? {};
+  console.log(`${TAG}.createKeyword entry`, { userId, trigger, responseLen: responseMessage?.length });
+
   if (typeof trigger !== 'string' || typeof responseMessage !== 'string') {
+    console.warn(`${TAG}.createKeyword INVALID_INPUT`, { userId });
     return res.status(400).json({ error: 'trigger and responseMessage required', code: 'INVALID_INPUT' });
   }
   const t = trigger.toLowerCase().trim();
-  if (!t) return res.status(400).json({ error: 'trigger cannot be empty', code: 'INVALID_INPUT' });
+  if (!t) {
+    console.warn(`${TAG}.createKeyword INVALID_INPUT (empty trigger)`, { userId });
+    return res.status(400).json({ error: 'trigger cannot be empty', code: 'INVALID_INPUT' });
+  }
 
-  const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
-  if (!user) return res.status(404).json({ error: 'User not found' });
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) {
+    console.warn(`${TAG}.createKeyword USER_NOT_FOUND`, { userId });
+    return res.status(404).json({ error: 'User not found' });
+  }
 
   const dup = await prisma.userKeyword.findUnique({
     where: { user_id_trigger: { user_id: user.id, trigger: t } },
   });
-  if (dup) return res.status(409).json({ error: 'Trigger already exists', code: 'DUPLICATE_TRIGGER' });
+  if (dup) {
+    console.warn(`${TAG}.createKeyword DUPLICATE_TRIGGER`, { userId, trigger: t });
+    return res.status(409).json({ error: 'Trigger already exists', code: 'DUPLICATE_TRIGGER' });
+  }
 
   const created = await prisma.userKeyword.create({
     data: { user_id: user.id, trigger: t, response_message: responseMessage },
@@ -140,33 +196,47 @@ export const createKeyword = async (req: Request, res: Response) => {
   if (user.client_id) {
     try {
       await syncUserKeywordCreate(user.client_id, t, responseMessage);
+      console.log(`${TAG}.createKeyword sync ok`, { userId, clientId: user.client_id, trigger: t });
     } catch (err) {
-      console.error('keyword sync (create) failed:', err);
+      console.error(`${TAG}.createKeyword sync FAILED`, { userId, clientId: user.client_id, trigger: t, err });
     }
+  } else {
+    console.log(`${TAG}.createKeyword skipping sync (user has no client_id)`, { userId });
   }
 
   return res.status(201).json(serializeUserKeyword(created));
 };
 
 export const updateKeyword = async (req: Request, res: Response) => {
+  const userId = req.user!.id;
   const { id } = req.params;
   const { trigger, responseMessage } = req.body ?? {};
+  console.log(`${TAG}.updateKeyword entry`, { userId, id, trigger });
+
   if (typeof trigger !== 'string' || typeof responseMessage !== 'string') {
+    console.warn(`${TAG}.updateKeyword INVALID_INPUT`, { userId, id });
     return res.status(400).json({ error: 'trigger and responseMessage required', code: 'INVALID_INPUT' });
   }
   const t = trigger.toLowerCase().trim();
-  if (!t) return res.status(400).json({ error: 'trigger cannot be empty', code: 'INVALID_INPUT' });
+  if (!t) {
+    console.warn(`${TAG}.updateKeyword INVALID_INPUT (empty trigger)`, { userId, id });
+    return res.status(400).json({ error: 'trigger cannot be empty', code: 'INVALID_INPUT' });
+  }
 
   const existing = await prisma.userKeyword.findUnique({ where: { id: id as string } });
-  if (!existing || existing.user_id !== req.user!.id) {
+  if (!existing || existing.user_id !== userId) {
+    console.warn(`${TAG}.updateKeyword NOT_FOUND`, { userId, id, found: !!existing, ownerMatch: existing?.user_id === userId });
     return res.status(404).json({ error: 'Keyword not found' });
   }
 
   if (t !== existing.trigger) {
     const dup = await prisma.userKeyword.findUnique({
-      where: { user_id_trigger: { user_id: req.user!.id, trigger: t } },
+      where: { user_id_trigger: { user_id: userId, trigger: t } },
     });
-    if (dup) return res.status(409).json({ error: 'Trigger already exists', code: 'DUPLICATE_TRIGGER' });
+    if (dup) {
+      console.warn(`${TAG}.updateKeyword DUPLICATE_TRIGGER`, { userId, id, newTrigger: t });
+      return res.status(409).json({ error: 'Trigger already exists', code: 'DUPLICATE_TRIGGER' });
+    }
   }
 
   const updated = await prisma.userKeyword.update({
@@ -174,12 +244,13 @@ export const updateKeyword = async (req: Request, res: Response) => {
     data: { trigger: t, response_message: responseMessage },
   });
 
-  const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
+  const user = await prisma.user.findUnique({ where: { id: userId } });
   if (user?.client_id) {
     try {
       await syncUserKeywordUpdate(user.client_id, existing.trigger, t, responseMessage);
+      console.log(`${TAG}.updateKeyword sync ok`, { userId, clientId: user.client_id, oldTrigger: existing.trigger, newTrigger: t });
     } catch (err) {
-      console.error('keyword sync (update) failed:', err);
+      console.error(`${TAG}.updateKeyword sync FAILED`, { userId, clientId: user.client_id, err });
     }
   }
 
@@ -187,20 +258,25 @@ export const updateKeyword = async (req: Request, res: Response) => {
 };
 
 export const deleteKeyword = async (req: Request, res: Response) => {
+  const userId = req.user!.id;
   const { id } = req.params;
+  console.log(`${TAG}.deleteKeyword entry`, { userId, id });
+
   const existing = await prisma.userKeyword.findUnique({ where: { id: id as string } });
-  if (!existing || existing.user_id !== req.user!.id) {
+  if (!existing || existing.user_id !== userId) {
+    console.warn(`${TAG}.deleteKeyword NOT_FOUND`, { userId, id, found: !!existing, ownerMatch: existing?.user_id === userId });
     return res.status(404).json({ error: 'Keyword not found' });
   }
 
   await prisma.userKeyword.delete({ where: { id: existing.id } });
 
-  const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
+  const user = await prisma.user.findUnique({ where: { id: userId } });
   if (user?.client_id) {
     try {
       await syncUserKeywordDelete(user.client_id, existing.trigger);
+      console.log(`${TAG}.deleteKeyword sync ok`, { userId, clientId: user.client_id, trigger: existing.trigger });
     } catch (err) {
-      console.error('keyword sync (delete) failed:', err);
+      console.error(`${TAG}.deleteKeyword sync FAILED`, { userId, clientId: user.client_id, err });
     }
   }
 
@@ -208,8 +284,12 @@ export const deleteKeyword = async (req: Request, res: Response) => {
 };
 
 export const leadStats = async (req: Request, res: Response) => {
-  const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
+  const userId = req.user!.id;
+  console.log(`${TAG}.leadStats entry`, { userId });
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user || !user.client_id) {
+    console.log(`${TAG}.leadStats no client — returning empty`, { userId, hasClient: !!user?.client_id });
     return res.json({ total: 0, monthly: buildEmptyMonths() });
   }
 
@@ -230,6 +310,8 @@ export const leadStats = async (req: Request, res: Response) => {
     const i = indexByKey.get(key);
     if (i !== undefined) buckets[i]!.count += 1;
   }
+
+  console.log(`${TAG}.leadStats result`, { userId, total, last6mTotal: leads.length });
 
   return res.json({
     total,
